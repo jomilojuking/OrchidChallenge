@@ -1,0 +1,365 @@
+import asyncio
+import base64
+from io import BytesIO
+from typing import Dict, List, Optional, Any
+from urllib.parse import urljoin, urlparse
+import json
+
+from playwright.async_api import async_playwright, Page
+from bs4 import BeautifulSoup
+from PIL import Image
+
+class WebsiteScraper:
+    def __init__(self):
+        self.viewport_sizes = [
+            {"width": 1920, "height": 1080},  # Desktop
+            {"width": 768, "height": 1024},   # Tablet
+            {"width": 375, "height": 667},    # Mobile
+        ]
+    
+    async def scrape_website(self, url: str) -> Dict[str, Any]:
+        """
+        Comprehensive website scraping that extracts:
+        - Screenshots at different viewport sizes
+        - HTML structure and content
+        - CSS styles
+        - Color palette
+        - Font information
+        - Layout structure
+        """
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            )
+            page = await context.new_page()
+            
+            try:
+                # Navigate to the website with better waiting
+                await page.goto(url, wait_until="networkidle", timeout=45000)
+                await page.wait_for_timeout(3000)  # Let dynamic content and animations load
+                
+                # Wait for any lazy-loaded content
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                await page.wait_for_timeout(2000)
+                await page.evaluate("window.scrollTo(0, 0)")
+                await page.wait_for_timeout(1000)
+                
+                # Extract all the data we need
+                scrape_data = {
+                    "url": url,
+                    "title": await page.title(),
+                    "screenshots": await self._capture_screenshots(page),
+                    "html_structure": await self._extract_html_structure(page),
+                    "styles": await self._extract_styles(page),
+                    "colors": await self._extract_colors(page),
+                    "fonts": await self._extract_fonts(page),
+                    "layout_analysis": await self._analyze_layout(page),
+                    "components": await self._identify_components(page),
+                    "interactions": await self._extract_interactions(page),
+                    "responsive_behavior": await self._analyze_responsive(page),
+                    "visual_hierarchy": await self._analyze_visual_hierarchy(page),
+                    "meta_info": await self._extract_meta_info(page),
+                }
+                
+                return scrape_data
+                
+            except Exception as e:
+                raise Exception(f"Scraping failed: {str(e)}")
+            finally:
+                await browser.close()
+    
+    async def _capture_screenshots(self, page: Page) -> Dict[str, str]:
+        """Capture screenshots at different viewport sizes"""
+        screenshots = {}
+        
+        for i, size in enumerate(self.viewport_sizes):
+            viewport_name = ["desktop", "tablet", "mobile"][i]
+            
+            # Set viewport size
+            await page.set_viewport_size(size)
+            await page.wait_for_timeout(1000)  # Let layout adjust
+            
+            # Take screenshot
+            screenshot_bytes = await page.screenshot(full_page=True, type="png")
+            
+            # Convert to base64 for easy transmission
+            screenshot_b64 = base64.b64encode(screenshot_bytes).decode()
+            screenshots[viewport_name] = screenshot_b64
+            
+        return screenshots
+    
+    async def _extract_html_structure(self, page: Page) -> Dict[str, Any]:
+        """Extract clean HTML structure and key content"""
+        # Get the full HTML
+        html_content = await page.content()
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove script and style tags for cleaner analysis
+        for tag in soup(["script", "style", "noscript"]):
+            tag.decompose()
+        
+        # Extract key structural elements
+        structure = {
+            "full_html": str(soup),
+            "body_html": str(soup.body) if soup.body else "",
+            "headings": self._extract_headings(soup),
+            "navigation": self._extract_navigation(soup),
+            "main_content": self._extract_main_content(soup),
+            "footer": self._extract_footer(soup),
+        }
+        
+        return structure
+    
+    async def _extract_styles(self, page: Page) -> Dict[str, Any]:
+        """Extract CSS styles and computed styles"""
+        # Get all stylesheets
+        stylesheets = await page.evaluate("""
+            () => {
+                const sheets = [];
+                for (let sheet of document.styleSheets) {
+                    try {
+                        if (sheet.href) {
+                            sheets.push({
+                                href: sheet.href,
+                                type: 'external'
+                            });
+                        } else {
+                            // Internal stylesheet
+                            let rules = [];
+                            for (let rule of sheet.cssRules || sheet.rules || []) {
+                                rules.push(rule.cssText);
+                            }
+                            sheets.push({
+                                type: 'internal',
+                                rules: rules
+                            });
+                        }
+                    } catch (e) {
+                        // Cross-origin stylesheets might not be accessible
+                        sheets.push({
+                            href: sheet.href,
+                            type: 'external',
+                            error: 'CORS blocked'
+                        });
+                    }
+                }
+                return sheets;
+            }
+        """)
+        
+        return {"stylesheets": stylesheets}
+    
+    async def _extract_colors(self, page: Page) -> List[str]:
+        """Extract dominant colors from the page"""
+        colors = await page.evaluate("""
+            () => {
+                const colors = new Set();
+                const elements = document.querySelectorAll('*');
+                
+                elements.forEach(el => {
+                    const styles = window.getComputedStyle(el);
+                    
+                    // Get background colors
+                    if (styles.backgroundColor && styles.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+                        colors.add(styles.backgroundColor);
+                    }
+                    
+                    // Get text colors
+                    if (styles.color && styles.color !== 'rgba(0, 0, 0, 0)') {
+                        colors.add(styles.color);
+                    }
+                    
+                    // Get border colors
+                    if (styles.borderColor && styles.borderColor !== 'rgba(0, 0, 0, 0)') {
+                        colors.add(styles.borderColor);
+                    }
+                });
+                
+                return Array.from(colors);
+            }
+        """)
+        
+        return colors[:20]  # Limit to top 20 colors
+    
+    async def _extract_fonts(self, page: Page) -> List[str]:
+        """Extract font families used on the page"""
+        fonts = await page.evaluate("""
+            () => {
+                const fonts = new Set();
+                const elements = document.querySelectorAll('*');
+                
+                elements.forEach(el => {
+                    const fontFamily = window.getComputedStyle(el).fontFamily;
+                    if (fontFamily) {
+                        fonts.add(fontFamily);
+                    }
+                });
+                
+                return Array.from(fonts);
+            }
+        """)
+        
+        return fonts[:10]  # Limit to top 10 fonts
+    
+    async def _analyze_layout(self, page: Page) -> Dict[str, Any]:
+        """Analyze the layout structure of the page"""
+        layout = await page.evaluate("""
+            () => {
+                const body = document.body;
+                const layout = {
+                    width: body.offsetWidth,
+                    height: body.offsetHeight,
+                    sections: []
+                };
+                
+                // Find main layout sections
+                const sections = document.querySelectorAll('header, nav, main, section, article, aside, footer');
+                sections.forEach(section => {
+                    const rect = section.getBoundingClientRect();
+                    layout.sections.push({
+                        tag: section.tagName.toLowerCase(),
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: rect.height,
+                        classes: Array.from(section.classList)
+                    });
+                });
+                
+                return layout;
+            }
+        """)
+        
+        return layout
+    
+    async def _identify_components(self, page: Page) -> Dict[str, Any]:
+        """Identify common UI components and patterns"""
+        components = await page.evaluate("""
+            () => {
+                const components = {
+                    buttons: [],
+                    forms: [],
+                    cards: [],
+                    navigation: []
+                };
+                
+                // Identify buttons
+                document.querySelectorAll('button, a[role="button"], .btn, [class*="button"]').forEach(btn => {
+                    const rect = btn.getBoundingClientRect();
+                    const styles = window.getComputedStyle(btn);
+                    components.buttons.push({
+                        text: btn.textContent?.trim() || '',
+                        classes: Array.from(btn.classList),
+                        styles: {
+                            backgroundColor: styles.backgroundColor,
+                            color: styles.color,
+                            borderRadius: styles.borderRadius,
+                            padding: styles.padding,
+                            fontSize: styles.fontSize,
+                            fontWeight: styles.fontWeight
+                        },
+                        position: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+                    });
+                });
+                
+                return components;
+            }
+        """)
+        return components
+    
+    async def _extract_interactions(self, page: Page) -> Dict[str, Any]:
+        """Extract interactive elements and behaviors"""
+        interactions = await page.evaluate("""
+            () => {
+                const interactions = {
+                    hover_effects: [],
+                    click_targets: []
+                };
+                
+                // Find clickable elements
+                document.querySelectorAll('a, button, [onclick], [role="button"]').forEach(el => {
+                    interactions.click_targets.push({
+                        tag: el.tagName.toLowerCase(),
+                        text: el.textContent?.trim()?.substring(0, 50) || '',
+                        classes: Array.from(el.classList),
+                        href: el.href || ''
+                    });
+                });
+                
+                return interactions;
+            }
+        """)
+        return interactions
+    
+    async def _analyze_responsive(self, page: Page) -> Dict[str, Any]:
+        """Analyze responsive breakpoints and behavior"""
+        return {}  # Simplified for now
+    
+    async def _analyze_visual_hierarchy(self, page: Page) -> Dict[str, Any]:
+        """Analyze visual hierarchy and importance"""
+        return {}  # Simplified for now
+    
+    async def _extract_meta_info(self, page: Page) -> Dict[str, str]:
+        """Extract meta information"""
+        meta = await page.evaluate("""
+            () => {
+                const meta = {};
+                
+                document.querySelectorAll('meta').forEach(tag => {
+                    const name = tag.getAttribute('name') || tag.getAttribute('property');
+                    const content = tag.getAttribute('content');
+                    if (name && content) {
+                        meta[name] = content;
+                    }
+                });
+                
+                return meta;
+            }
+        """)
+        
+        return meta
+    
+    def _extract_headings(self, soup: BeautifulSoup) -> List[Dict[str, str]]:
+        """Extract all headings with their hierarchy"""
+        headings = []
+        for i in range(1, 7):  # h1 to h6
+            for heading in soup.find_all(f'h{i}'):
+                headings.append({
+                    "level": i,
+                    "text": heading.get_text().strip(),
+                    "tag": f"h{i}"
+                })
+        return headings
+    
+    def _extract_navigation(self, soup: BeautifulSoup) -> List[str]:
+        """Extract navigation elements"""
+        nav_items = []
+        nav_elements = soup.find_all(['nav', 'header']) + soup.find_all(class_=lambda x: x and ('nav' in str(x).lower() or 'menu' in str(x).lower()))
+        
+        for nav in nav_elements:
+            links = nav.find_all('a')
+            for link in links:
+                text = link.get_text().strip()
+                if text:
+                    nav_items.append(text)
+        
+        return nav_items[:20]  # Limit to avoid clutter
+    
+    def _extract_main_content(self, soup: BeautifulSoup) -> str:
+        """Extract main content area"""
+        # Try to find main content
+        main_candidates = soup.find_all(['main', 'article']) + soup.find_all(class_=lambda x: x and 'content' in str(x).lower())
+        
+        if main_candidates:
+            return str(main_candidates[0])[:5000]  # Limit length
+        
+        # Fallback to body content
+        return str(soup.body)[:5000] if soup.body else ""
+    
+    def _extract_footer(self, soup: BeautifulSoup) -> str:
+        """Extract footer content"""
+        footer = soup.find('footer')
+        if footer:
+            return str(footer)[:1000]  # Limit length
+        return ""
