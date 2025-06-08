@@ -1,43 +1,38 @@
-# Orchids SWE Intern Challenge Template
+# 🌸 Orchids SWE Intern Challenge
 
-This project consists of a backend built with FastAPI and a frontend built with Next.js and TypeScript.
+This project is a submission for the **Orchids SWE Intern Challenge**. It includes:
 
-## Backend
+- ⚙️ A **FastAPI** backend using [`uv`](https://github.com/astral-sh/uv)
+- 🖥️ A **Next.js + TypeScript** frontend
+- 🧠 Integration with **Bright Data** and **Anthropic Claude API**
 
-The backend uses `uv` for package management.
+---
 
-### Installation
+## 🔐 Environment Variables
 
-To install the backend dependencies, run the following command in the backend project directory:
+Create a `.env` file inside the `backend/` folder with the following variables:
 
-```bash
+```env
+API_TOKEN=your-brightdata-api-token
+BROWSER_AUTH=your-browser-auth-string
+BRIGHT_DATA_PASSWORD=your-brightdata-password
+ANTHROPIC_API_KEY=your-anthropic-api-key
+🛠️ Backend Setup (FastAPI)
+✅ Make sure you have Python 3.10+ installed
+
+✅ Install uv if you haven’t already:
+
+pip install uv
+Inside the backend/ folder:
 uv sync
-```
-
-### Running the Backend
-
-To run the backend development server, use the following command:
-
-```bash
 uv run fastapi dev
-```
+🔁 Go to the frontend/ directory
 
-## Frontend
-
-The frontend is built with Next.js and TypeScript.
-
-### Installation
-
-To install the frontend dependencies, navigate to the frontend project directory and run:
-
-```bash
+💾 Install dependencies:
 npm install
-```
+▶️ Start the dev server:
 
-### Running the Frontend
-
-To start the frontend development server, run:
-
-```bash
 npm run dev
-```
+🌐 Frontend runs at: http://localhost:3000
+
+✅ Once everything is set up, the backend and frontend should work together smoothly. Follow the steps above, and you're good to go!
